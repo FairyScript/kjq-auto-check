@@ -1,0 +1,14 @@
+{
+  "name": "kjq-auto-check",
+  "version": "1.0.0",
+  "license": "MPL-2.0",
+  "module": "index.ts",
+  "type": "module",
+  "private": true,
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  }
+}
