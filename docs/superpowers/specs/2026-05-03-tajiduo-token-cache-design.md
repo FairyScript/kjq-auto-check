@@ -30,7 +30,7 @@
 ## TokenManager 类
 
 ### 位置
-`src/platforms/tajiduo/token-manager.ts`
+`src/token-manager.ts`（项目级通用模块）
 
 ### 接口
 ```typescript
@@ -45,16 +45,40 @@ class TokenManager {
   // 保存 token 到缓存
   saveTokens(accessToken: string, refreshToken: string): Promise<void>
 
-  // 刷新 token
+  // 刷新 token（由各平台实现具体刷新逻辑）
   refreshTokens(refreshToken: string): Promise<{ accessToken: string; refreshToken: string }>
 }
 ```
 
-### 刷新接口
-- URL: `https://bbs-api.tajiduo.com/usercenter/api/refreshToken`
-- 方法: POST
-- 请求体: `{ refreshToken: string }`
-- 响应: `{ data: { accessToken: string, refreshToken: string } }`
+### 设计说明
+- TokenManager 是通用的 token 缓存管理器，不包含平台特定的刷新逻辑
+- 各平台通过继承或组合方式提供具体的 `refreshTokens` 实现
+- 缓存文件路径: `.cache/{platformName}.json`
+
+## TajiduoTokenManager 类
+
+### 位置
+`src/platforms/tajiduo/token-manager.ts`
+
+### 设计
+继承 TokenManager，实现塔吉多特定的 token 刷新逻辑。
+
+```typescript
+class TajiduoTokenManager extends TokenManager {
+  constructor() {
+    super('tajiduo')
+  }
+
+  // 实现塔吉多的 token 刷新逻辑
+  async refreshTokens(refreshToken: string): Promise<{ accessToken: string; refreshToken: string }> {
+    // 调用塔吉多刷新接口
+    // URL: https://bbs-api.tajiduo.com/usercenter/api/refreshToken
+    // 方法: POST
+    // 请求体: { refreshToken: string }
+    // 响应: { data: { accessToken: string, refreshToken: string } }
+  }
+}
+```
 
 ## TajiduoPlatform 改造
 
@@ -63,7 +87,7 @@ class TokenManager {
 - 移除对 `token` 的直接依赖
 
 ### buildHeaders() 方法
-- 使用 `TokenManager.getValidAccessToken()` 获取 token
+- 使用 `TajiduoTokenManager` 获取有效 token
 - 设置 `Authorization` 头
 
 ### 请求重试逻辑
@@ -135,10 +159,11 @@ async requestWithRetry<T>(requestFn: (token: string) => Promise<T>): Promise<T> 
 
 ## 文件变更
 
-1. **新增**: `src/platforms/tajiduo/token-manager.ts` - TokenManager 类
-2. **修改**: `src/platforms/tajiduo/index.ts` - 集成 TokenManager 和重试逻辑
-3. **修改**: `.gitignore` - 添加 `.cache/`
-4. **新增**: `.cache/tajiduo.json` - 缓存文件（运行时生成）
+1. **新增**: `src/token-manager.ts` - 通用 TokenManager 基类
+2. **新增**: `src/platforms/tajiduo/token-manager.ts` - TajiduoTokenManager 子类
+3. **修改**: `src/platforms/tajiduo/index.ts` - 集成 TajiduoTokenManager 和重试逻辑
+4. **修改**: `.gitignore` - 添加 `.cache/`
+5. **新增**: `.cache/tajiduo.json` - 缓存文件（运行时生成）
 
 ## 错误处理
 
