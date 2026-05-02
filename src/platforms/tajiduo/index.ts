@@ -71,7 +71,7 @@ export class TajiduoPlatform implements CheckInPlatform {
       headers: await this.buildHeaders()
     })
     const data = await res.json() as SignInState
-    return data.ok && data.data?.todaySign
+    return data && data.data?.todaySign
   }
 
   private async signIn(): Promise<void> {
