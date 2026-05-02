@@ -20,9 +20,15 @@ interface GameBindRoleResponse {
   code: number
   msg: string
   data: {
-    roleId: string
+    account: string
+    gameId: number
+    gender: number
+    lev: number
+    roleId: number
     roleName: string
-  }[]
+    serverId: number
+    serverName: string
+  }
 }
 
 interface TokenRefreshError extends Error {
@@ -174,12 +180,12 @@ export class TajiduoPlatform implements CheckInPlatform {
       }
       const data = await res.json() as GameBindRoleResponse
 
-      if (data.code !== 0 || !data.data || data.data.length === 0) {
+      if (data.code !== 0 || !data.data) {
         throw new Error(`[Tajiduo] 获取绑定角色失败: ${data.msg || '未找到绑定角色'}`)
       }
 
-      const roleId = data.data[0]!.roleId
-      console.log(`[Tajiduo] 获取到绑定角色 ID: ${roleId}`)
+      const roleId = String(data.data.roleId)
+      console.log(`[Tajiduo] 获取到绑定角色: ${data.data.roleName} (ID: ${roleId})`)
       return roleId
     })
   }
