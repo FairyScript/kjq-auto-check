@@ -75,9 +75,13 @@ export class TajiduoPlatform implements CheckInPlatform {
   }
 
   private async signIn(): Promise<void> {
+    const headers = await this.buildHeaders()
     const data = await fetch(SIGN_IN_URL, {
       method: 'POST',
-      headers: await this.buildHeaders(),
+      headers: {
+        ...headers,
+        'Content-Type': 'application/x-www-form-urlencoded'
+      },
       body: this.buildFormData(),
     }).then((res) => res.json()) as SignInState
     console.log(`[Tajiduo] ${data.msg}`)
