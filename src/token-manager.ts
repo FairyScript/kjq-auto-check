@@ -32,5 +32,5 @@ export abstract class TokenManager {
     await Bun.write(this.cachePath, JSON.stringify({ accessToken, refreshToken }, null, 2))
   }
 
-  abstract refreshTokens(refreshToken: string): Promise<TokenCache>
+  abstract refreshTokens(refreshToken: string, headers?: Headers): Promise<TokenCache>
 }

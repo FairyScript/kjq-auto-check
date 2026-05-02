@@ -8,12 +8,11 @@ export class TajiduoTokenManager extends TokenManager {
     super('tajiduo')
   }
 
-  async refreshTokens(refreshToken: string): Promise<TokenCache> {
+  async refreshTokens(refreshToken: string, headers: Headers): Promise<TokenCache> {
+    headers.set('Authorization', refreshToken)
     const res = await fetch(REFRESH_TOKEN_URL, {
       method: 'POST',
-      headers: {
-        'Authorization': refreshToken
-      }
+      headers
     })
     const data = await res.json() as { code: number; msg: string; data: TokenCache }
 

@@ -5,6 +5,7 @@ import { TajiduoTokenManager } from './token-manager.ts'
 const INIT_SIGN_IN_URL = 'https://bbs-api.tajiduo.com/apihub/awapi/sign/rewards'
 const SIGN_IN_URL = 'https://bbs-api.tajiduo.com/apihub/awapi/sign'
 const CHECK_SIGN_IN_URL = 'https://bbs-api.tajiduo.com/apihub/awapi/signin/state'
+const GET_GAME_BIND_ROLE_URL = 'https://bbs-api.tajiduo.com/apihub/api/getGameBindRole'
 
 interface SignInState {
   code: number
@@ -15,6 +16,15 @@ interface SignInState {
   }
 }
 
+interface GameBindRoleResponse {
+  code: number
+  msg: string
+  data: {
+    roleId: string
+    roleName: string
+  }[]
+}
+
 interface TokenRefreshError extends Error {
   status?: number
 }
@@ -22,16 +32,19 @@ interface TokenRefreshError extends Error {
 export class TajiduoPlatform implements CheckInPlatform {
   readonly name = '塔吉多 (Tajiduo)'
   private tokenManager = new TajiduoTokenManager()
+  private roleId: string | null = null
 
   private get config() {
     const refreshToken = process.env['TAJIDUO_REFRESH_TOKEN']
-    const roleId = process.env['TAJIDUO_ROLE_ID']
+    const uid = process.env['TAJIDUO_UID']
+    const deviceId = process.env['TAJIDUO_DEVICE_ID']
     const gameId = process.env['TAJIDUO_GAME_ID'] ?? '1289'
 
     if (!refreshToken) throw new Error('[Tajiduo] TAJIDUO_REFRESH_TOKEN 未配置')
-    if (!roleId) throw new Error('[Tajiduo] TAJIDUO_ROLE_ID 未配置')
+    if (!uid) throw new Error('[Tajiduo] TAJIDUO_UID 未配置')
+    if (!deviceId) throw new Error('[Tajiduo] TAJIDUO_DEVICE_ID 未配置')
 
-    return { refreshToken, roleId, gameId }
+    return { refreshToken, uid, deviceId, gameId }
   }
 
   isEnabled(): boolean {
@@ -39,6 +52,7 @@ export class TajiduoPlatform implements CheckInPlatform {
   }
 
   private async buildHeaders(token: string): Promise<Headers> {
+    const { uid, deviceId } = this.config
     const rawHeaders = await Bun.file(resolve(import.meta.dirname, 'headers.txt')).text()
     const DEFAULT_HEADERS = Object.fromEntries(
       rawHeaders
@@ -52,19 +66,22 @@ export class TajiduoPlatform implements CheckInPlatform {
 
     const headers = new Headers(DEFAULT_HEADERS)
     headers.set('Authorization', token)
+    headers.set('uid', uid)
+    headers.set('deviceid', deviceId)
     return headers
   }
 
   private buildFormData(): URLSearchParams {
-    const { roleId, gameId } = this.config
-    return new URLSearchParams({ roleId, gameId })
+    const { gameId } = this.config
+    if (!this.roleId) throw new Error('[Tajiduo] 角色 ID 未获取')
+    return new URLSearchParams({ roleId: this.roleId, gameId })
   }
 
   private async requestWithRetry<T>(requestFn: (token: string) => Promise<T>): Promise<T> {
     let tokens = await this.tokenManager.getTokens()
 
     if (!tokens) {
-      tokens = await this.tokenManager.refreshTokens(this.config.refreshToken)
+      tokens = await this.tokenManager.refreshTokens(this.config.refreshToken, await this.buildHeaders(''))
       await this.tokenManager.saveTokens(tokens.accessToken, tokens.refreshToken)
     }
 
@@ -73,7 +90,7 @@ export class TajiduoPlatform implements CheckInPlatform {
     } catch (err) {
       const tokenErr = err as TokenRefreshError
       if (tokenErr.status === 401) {
-        const newTokens = await this.tokenManager.refreshTokens(tokens.refreshToken)
+        const newTokens = await this.tokenManager.refreshTokens(tokens.refreshToken, await this.buildHeaders(''))
         await this.tokenManager.saveTokens(newTokens.accessToken, newTokens.refreshToken)
 
         try {
@@ -140,7 +157,38 @@ export class TajiduoPlatform implements CheckInPlatform {
     })
   }
 
+  private async getGameBindRole(): Promise<string> {
+    const { uid, gameId } = this.config
+    return await this.requestWithRetry(async (token) => {
+      const url = new URL(GET_GAME_BIND_ROLE_URL)
+      url.searchParams.set('uid', uid)
+      url.searchParams.set('gameId', gameId)
+
+      const res = await fetch(url.toString(), {
+        headers: await this.buildHeaders(token)
+      })
+      if (res.status === 401) {
+        const err = new Error('Unauthorized') as TokenRefreshError
+        err.status = 401
+        throw err
+      }
+      const data = await res.json() as GameBindRoleResponse
+
+      if (data.code !== 0 || !data.data || data.data.length === 0) {
+        throw new Error(`[Tajiduo] 获取绑定角色失败: ${data.msg || '未找到绑定角色'}`)
+      }
+
+      const roleId = data.data[0]!.roleId
+      console.log(`[Tajiduo] 获取到绑定角色 ID: ${roleId}`)
+      return roleId
+    })
+  }
+
   async run(): Promise<void> {
+    // 获取绑定角色 ID
+    console.log('[Tajiduo] 获取绑定角色...')
+    this.roleId = await this.getGameBindRole()
+
     await this.initSignIn()
     await randomDelay(300, 1000)
 
