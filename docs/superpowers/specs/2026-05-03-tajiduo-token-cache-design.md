@@ -71,14 +71,32 @@ class TajiduoTokenManager extends TokenManager {
 
   // 实现塔吉多的 token 刷新逻辑
   async refreshTokens(refreshToken: string): Promise<{ accessToken: string; refreshToken: string }> {
-    // 调用塔吉多刷新接口
-    // URL: https://bbs-api.tajiduo.com/usercenter/api/refreshToken
-    // 方法: POST
-    // 请求体: { refreshToken: string }
-    // 响应: { data: { accessToken: string, refreshToken: string } }
+    const res = await fetch(REFRESH_TOKEN_URL, {
+      method: 'POST',
+      headers: {
+        'Authorization': refreshToken
+      }
+    })
+    const data = await res.json()
+
+    if (data.code !== 0) {
+      throw new Error(`[Tajiduo] 刷新 token 失败: ${data.msg}`)
+    }
+
+    // 响应中包含新的 accessToken 和 refreshToken
+    return {
+      accessToken: data.data.accessToken,
+      refreshToken: data.data.refreshToken
+    }
   }
 }
 ```
+
+### 刷新接口详情
+- URL: `https://bbs-api.tajiduo.com/usercenter/api/refreshToken`
+- 方法: POST
+- 请求头: `Authorization: {refreshToken}`
+- 成功响应: `{ code: 0, data: { accessToken: string, refreshToken: string } }`
 
 ## TajiduoPlatform 改造
 
