@@ -1,6 +1,7 @@
 import { createInterface } from 'readline'
 import { randomUUID } from 'crypto'
 import type { TajiduoConfig } from '../../config.ts'
+import { loadConfigSafe, saveConfigPartial } from '../../config.ts'
 import { sendSmsCode, loginBySMS } from './laohu.ts'
 
 const USER_CENTER_LOGIN_URL = 'https://bbs-api.tajiduo.com/usercenter/api/login'
@@ -103,15 +104,45 @@ export async function setupTajiduo(): Promise<TajiduoConfig> {
   const rl = createInterface({ input: process.stdin, output: process.stdout })
 
   console.log('\n--- 塔吉多 (Tajiduo) 配置 ---')
-  console.log('将通过手机短信验证码登录:\n')
 
-  const gameId = await prompt(rl, 'Game ID (可选, 默认 1289): ') || '1289'
+  // Load existing config to reuse deviceId and other values
+  const existing = await loadConfigSafe()
+  const existingCfg = existing.tajiduo
 
-  // Generate deviceId
-  const deviceId = 'HT' + randomUUID().replace(/-/g, '').slice(0, 14).toUpperCase()
-  console.log(`\n设备 ID: ${deviceId}`)
+  const gameId = existingCfg?.gameId || await prompt(rl, 'Game ID (可选, 默认 1289): ') || '1289'
 
-  // SMS login
+  // Reuse deviceId if present, otherwise generate and save immediately
+  let deviceId = existingCfg?.deviceId
+  if (deviceId) {
+    console.log(`\n复用已有设备 ID: ${deviceId}`)
+  } else {
+    deviceId = 'HT' + randomUUID().replace(/-/g, '').slice(0, 14).toUpperCase()
+    console.log(`\n新建设备 ID: ${deviceId}`)
+    await saveConfigPartial({ tajiduo: { enabled: true, deviceId, uid: '', refreshToken: '', gameId } })
+    console.log('(设备 ID 已保存)')
+  }
+
+  // Check if we already have valid tokens
+  if (existingCfg?.refreshToken && existingCfg?.uid) {
+    console.log('\n检测到已有登录状态，尝试复用...')
+    try {
+      const refreshed = await refreshSession(existingCfg.refreshToken, deviceId)
+      console.log(`Token 刷新成功，uid=${existingCfg.uid}`)
+      await saveConfigPartial({ tajiduo: { enabled: true, deviceId, uid: existingCfg.uid, refreshToken: refreshed.refreshToken, gameId } })
+
+      const role = await getBindRole(refreshed.accessToken, existingCfg.uid, gameId, deviceId)
+      console.log(`绑定角色: ${role.roleName} (ID: ${role.roleId})`)
+
+      rl.close()
+      return { enabled: true, deviceId, uid: existingCfg.uid, refreshToken: refreshed.refreshToken, gameId }
+    } catch {
+      console.log('已有 token 已失效，需要重新登录')
+    }
+  }
+
+  // SMS login flow
+  console.log('\n将通过手机短信验证码登录:')
+
   const cellphone = await prompt(rl, '\n手机号码: ')
   if (!cellphone) throw new Error('手机号码不能为空')
 
@@ -130,9 +161,17 @@ export async function setupTajiduo(): Promise<TajiduoConfig> {
   const session = await userCenterLogin(laohuAccount.token, laohuAccount.userId, deviceId)
   console.log(`塔吉多登录成功: uid=${session.uid}`)
 
+  // Save immediately after successful user center login
+  await saveConfigPartial({ tajiduo: { enabled: true, deviceId, uid: session.uid, refreshToken: session.refreshToken, gameId } })
+  console.log('(登录状态已保存)')
+
   // Refresh to get a stable token pair
   console.log('正在获取稳定的 refreshToken...')
   const refreshed = await refreshSession(session.refreshToken, deviceId)
+
+  // Save again with stable refreshToken
+  await saveConfigPartial({ tajiduo: { enabled: true, deviceId, uid: session.uid, refreshToken: refreshed.refreshToken, gameId } })
+  console.log('(稳定 token 已保存)')
 
   // Get bind role for display
   console.log('正在获取绑定角色...')
@@ -141,11 +180,5 @@ export async function setupTajiduo(): Promise<TajiduoConfig> {
 
   rl.close()
 
-  return {
-    enabled: true,
-    deviceId,
-    uid: session.uid,
-    refreshToken: refreshed.refreshToken,
-    gameId,
-  }
+  return { enabled: true, deviceId, uid: session.uid, refreshToken: refreshed.refreshToken, gameId }
 }

@@ -1,5 +1,4 @@
 import { createInterface } from 'readline'
-import { saveConfig, type Config } from './config.ts'
 import { getAllPlatforms } from './platforms/registry.ts'
 
 // Import platform registrations (side effects)
@@ -39,25 +38,16 @@ export async function runSetup(): Promise<void> {
     return
   }
 
-  const config: Config = {}
-
   for (const key of selectedKeys) {
     const platform = platforms.get(key)!
     try {
-      const result = await platform.setup()
-      config[result.platformKey] = result.config
+      await platform.setup()
     } catch (err) {
       console.error(`\n${platform.name} 配置失败:`, err)
       console.error('跳过此平台')
     }
   }
 
-  if (Object.keys(config).length === 0) {
-    console.log('\n没有成功配置的平台，不保存配置文件')
-    return
-  }
-
-  await saveConfig(config)
   console.log('\n配置完成!')
 
   const rl2 = createInterface({ input: process.stdin, output: process.stdout })

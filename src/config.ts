@@ -33,7 +33,23 @@ export async function loadConfig(): Promise<Config> {
   return await file.json() as Config
 }
 
+export async function loadConfigSafe(): Promise<Config> {
+  const file = Bun.file(CONFIG_PATH)
+  if (!(await file.exists())) return {}
+  try {
+    return await file.json() as Config
+  } catch {
+    return {}
+  }
+}
+
 export async function saveConfig(config: Config): Promise<void> {
   await Bun.write(CONFIG_PATH, JSON.stringify(config, null, 2) + '\n')
   console.log(`配置已保存到 ${CONFIG_PATH}`)
+}
+
+export async function saveConfigPartial(partial: Partial<Config>): Promise<void> {
+  const existing = await loadConfigSafe()
+  const merged = { ...existing, ...partial }
+  await Bun.write(CONFIG_PATH, JSON.stringify(merged, null, 2) + '\n')
 }
