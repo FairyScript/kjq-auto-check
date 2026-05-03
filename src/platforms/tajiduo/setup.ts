@@ -2,6 +2,7 @@ import { createInterface } from 'readline'
 import { randomUUID } from 'crypto'
 import type { TajiduoConfig } from '../../config.ts'
 import { loadConfigSafe, saveConfigPartial } from '../../config.ts'
+import { generateDs } from '../../http.ts'
 import { sendSmsCode, loginBySMS } from './laohu.ts'
 
 const USER_CENTER_LOGIN_URL = 'https://bbs-api.tajiduo.com/usercenter/api/login'
@@ -19,6 +20,17 @@ const TAJIDUO_BASE_HEADERS: Record<string, string> = {
 }
 
 const TAJIDUO_USER_CENTER_APP_ID = '10551'
+const TAJIDUO_DS_SALT = 'pUds3dfMkl'
+
+function buildApiHeaders(deviceId: string, extra?: Record<string, string>): Record<string, string> {
+  return {
+    ...TAJIDUO_BASE_HEADERS,
+    deviceid: deviceId,
+    uid: '0',
+    ds: generateDs(TAJIDUO_BASE_HEADERS['appversion'], TAJIDUO_DS_SALT),
+    ...extra,
+  }
+}
 
 interface TajiduoSession {
   accessToken: string
@@ -33,7 +45,7 @@ function prompt(rl: ReturnType<typeof createInterface>, question: string): Promi
 }
 
 async function userCenterLogin(laohuToken: string, laohuUserId: number, deviceId: string): Promise<TajiduoSession> {
-  const headers = { ...TAJIDUO_BASE_HEADERS, deviceid: deviceId, uid: '0' }
+  const headers = buildApiHeaders(deviceId)
   const res = await fetch(USER_CENTER_LOGIN_URL, {
     method: 'POST',
     headers: { ...headers, 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -61,7 +73,7 @@ async function userCenterLogin(laohuToken: string, laohuUserId: number, deviceId
 }
 
 async function refreshSession(refreshToken: string, deviceId: string): Promise<TajiduoSession> {
-  const headers = { ...TAJIDUO_BASE_HEADERS, deviceid: deviceId, uid: '0', Authorization: refreshToken }
+  const headers = buildApiHeaders(deviceId, { Authorization: refreshToken })
   const res = await fetch(REFRESH_SESSION_URL, { method: 'POST', headers })
   const data = await res.json() as { code: number; msg: string; data?: { accessToken?: string; refreshToken?: string } }
 
@@ -80,12 +92,7 @@ async function refreshSession(refreshToken: string, deviceId: string): Promise<T
 }
 
 async function getBindRole(accessToken: string, uid: string, gameId: string, deviceId: string): Promise<{ roleId: string; roleName: string }> {
-  const headers = {
-    ...TAJIDUO_BASE_HEADERS,
-    deviceid: deviceId,
-    uid,
-    Authorization: accessToken,
-  }
+  const headers = buildApiHeaders(deviceId, { uid, Authorization: accessToken })
   const url = `${GET_BIND_ROLE_URL}?uid=${uid}&gameId=${gameId}`
   const res = await fetch(url, { method: 'GET', headers })
   const data = await res.json() as { code: number; msg: string; data?: { roleId?: number; roleName?: string } }
