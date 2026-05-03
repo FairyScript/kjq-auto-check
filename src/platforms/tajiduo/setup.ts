@@ -23,6 +23,20 @@ const TAJIDUO_BASE_HEADERS: Record<string, string> = {
 const TAJIDUO_USER_CENTER_APP_ID = '10551'
 const TAJIDUO_DS_SALT = 'pUds3dfMkl'
 
+async function parseResponse<T extends { code: number; msg: string }>(res: Response, label: string): Promise<T> {
+  debugLog(`[Tajiduo] ${label} -> HTTP ${res.status}`)
+  if (!res.ok) {
+    const text = await res.text().catch(() => '')
+    throw new Error(`[Tajiduo] ${label} HTTP ${res.status}: ${text.slice(0, 200)}`)
+  }
+  const data = await res.json() as T | null
+  if (!data || typeof data.code !== 'number') {
+    throw new Error(`[Tajiduo] ${label} 返回格式异常: ${JSON.stringify(data).slice(0, 200)}`)
+  }
+  debugLog(`[Tajiduo] ${label} code=${data.code} msg=${data.msg}`)
+  return data
+}
+
 function buildApiHeaders(deviceId: string, extra?: Record<string, string>): Record<string, string> {
   return {
     ...TAJIDUO_BASE_HEADERS,
@@ -56,8 +70,7 @@ async function userCenterLogin(laohuToken: string, laohuUserId: number, deviceId
       appId: TAJIDUO_USER_CENTER_APP_ID,
     }),
   })
-  const data = await res.json() as { code: number; msg: string; data?: { accessToken?: string; refreshToken?: string; uid?: string | number } }
-  debugLog(`[Tajiduo] POST /usercenter/api/login -> ${res.status} code=${data.code}`, data.data ? 'ok' : data.msg)
+  const data = await parseResponse<{ code: number; msg: string; data?: { accessToken?: string; refreshToken?: string; uid?: string | number } }>(res, 'POST /usercenter/api/login')
 
   if (data.code !== 0 || !data.data) {
     throw new Error(`[Tajiduo] 用户中心登录失败: ${data.msg}`)
@@ -77,8 +90,7 @@ async function userCenterLogin(laohuToken: string, laohuUserId: number, deviceId
 async function refreshSession(refreshToken: string, deviceId: string): Promise<TajiduoSession> {
   const headers = buildApiHeaders(deviceId, { Authorization: refreshToken })
   const res = await fetch(REFRESH_SESSION_URL, { method: 'POST', headers })
-  const data = await res.json() as { code: number; msg: string; data?: { accessToken?: string; refreshToken?: string } }
-  debugLog(`[Tajiduo] POST /refreshToken -> ${res.status} code=${data.code}`, data.data ? 'ok' : data.msg)
+  const data = await parseResponse<{ code: number; msg: string; data?: { accessToken?: string; refreshToken?: string } }>(res, 'POST /refreshToken')
 
   if (data.code !== 0 || !data.data) {
     throw new Error(`[Tajiduo] 刷新 session 失败: ${data.msg}`)
@@ -98,8 +110,7 @@ async function getBindRole(accessToken: string, uid: string, gameId: string, dev
   const headers = buildApiHeaders(deviceId, { uid, Authorization: accessToken })
   const url = `${GET_BIND_ROLE_URL}?uid=${uid}&gameId=${gameId}`
   const res = await fetch(url, { method: 'GET', headers })
-  const data = await res.json() as { code: number; msg: string; data?: { roleId?: number; roleName?: string } }
-  debugLog(`[Tajiduo] GET /getGameBindRole -> ${res.status} code=${data.code}`, data.data ? `role=${data.data.roleName}` : data.msg)
+  const data = await parseResponse<{ code: number; msg: string; data?: { roleId?: number; roleName?: string } }>(res, 'GET /getGameBindRole')
 
   if (data.code !== 0 || !data.data) {
     throw new Error(`[Tajiduo] 获取绑定角色失败: ${data.msg}`)
