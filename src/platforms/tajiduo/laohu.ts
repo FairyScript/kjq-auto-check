@@ -88,11 +88,12 @@ async function submit<T>(
   path: string,
   params: Record<string, string>,
   method: 'GET' | 'POST' = 'POST',
+  keepEmpty = false,
 ): Promise<T> {
   const signed = { ...params, sign: signParams(params, LAOHU_APP_KEY) }
-  const cleaned = Object.fromEntries(
-    Object.entries(signed).filter(([, v]) => v !== ''),
-  )
+  const cleaned = keepEmpty
+    ? signed
+    : Object.fromEntries(Object.entries(signed).filter(([, v]) => v !== ''))
 
   const url = `${LAOHU_BASE_URL}${path}`
   const options: RequestInit = {
@@ -141,6 +142,7 @@ export async function loginBySMS(cellphone: string, code: string): Promise<Laohu
     '/openApi/sms/new/login',
     params,
     'POST',
+    true,
   )
 
   if (result.userId === undefined || result.token === undefined) {
