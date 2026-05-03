@@ -1,4 +1,5 @@
 import { createCipheriv, createHash, randomUUID } from 'crypto'
+import { debugLog } from '../../debug.ts'
 
 const LAOHU_BASE_URL = 'https://user.laohu.com'
 const LAOHU_SDK_VERSION = '4.273.0'
@@ -103,8 +104,10 @@ async function submit<T>(
 
   if (method === 'GET') {
     const qs = new URLSearchParams(cleaned).toString()
+    debugLog(`[Laohu] GET ${path}`, Object.keys(cleaned))
     const res = await fetch(`${url}?${qs}`, options)
     const payload = await res.json() as { code: number | string; message?: string; result?: T }
+    debugLog(`[Laohu] <- ${res.status} code=${payload.code}`)
     if (payload.code !== 0 && payload.code !== '0') {
       throw new Error(`[Laohu] ${payload.message ?? '请求失败'}`)
     }
@@ -112,8 +115,10 @@ async function submit<T>(
   } else {
     options.headers = { ...options.headers as Record<string, string>, 'Content-Type': 'application/x-www-form-urlencoded' }
     options.body = new URLSearchParams(cleaned)
+    debugLog(`[Laohu] POST ${path}`, Object.keys(cleaned))
     const res = await fetch(url, options)
     const payload = await res.json() as { code: number | string; message?: string; result?: T }
+    debugLog(`[Laohu] <- ${res.status} code=${payload.code}`)
     if (payload.code !== 0 && payload.code !== '0') {
       throw new Error(`[Laohu] ${payload.message ?? '请求失败'}`)
     }

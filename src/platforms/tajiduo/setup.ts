@@ -3,6 +3,7 @@ import { randomUUID } from 'crypto'
 import type { TajiduoConfig } from '../../config.ts'
 import { loadConfigSafe, saveConfigPartial } from '../../config.ts'
 import { generateDs } from '../../http.ts'
+import { debugLog } from '../../debug.ts'
 import { sendSmsCode, loginBySMS } from './laohu.ts'
 
 const USER_CENTER_LOGIN_URL = 'https://bbs-api.tajiduo.com/usercenter/api/login'
@@ -56,6 +57,7 @@ async function userCenterLogin(laohuToken: string, laohuUserId: number, deviceId
     }),
   })
   const data = await res.json() as { code: number; msg: string; data?: { accessToken?: string; refreshToken?: string; uid?: string | number } }
+  debugLog(`[Tajiduo] POST /usercenter/api/login -> ${res.status} code=${data.code}`, data.data ? 'ok' : data.msg)
 
   if (data.code !== 0 || !data.data) {
     throw new Error(`[Tajiduo] 用户中心登录失败: ${data.msg}`)
@@ -76,6 +78,7 @@ async function refreshSession(refreshToken: string, deviceId: string): Promise<T
   const headers = buildApiHeaders(deviceId, { Authorization: refreshToken })
   const res = await fetch(REFRESH_SESSION_URL, { method: 'POST', headers })
   const data = await res.json() as { code: number; msg: string; data?: { accessToken?: string; refreshToken?: string } }
+  debugLog(`[Tajiduo] POST /refreshToken -> ${res.status} code=${data.code}`, data.data ? 'ok' : data.msg)
 
   if (data.code !== 0 || !data.data) {
     throw new Error(`[Tajiduo] 刷新 session 失败: ${data.msg}`)
@@ -96,6 +99,7 @@ async function getBindRole(accessToken: string, uid: string, gameId: string, dev
   const url = `${GET_BIND_ROLE_URL}?uid=${uid}&gameId=${gameId}`
   const res = await fetch(url, { method: 'GET', headers })
   const data = await res.json() as { code: number; msg: string; data?: { roleId?: number; roleName?: string } }
+  debugLog(`[Tajiduo] GET /getGameBindRole -> ${res.status} code=${data.code}`, data.data ? `role=${data.data.roleName}` : data.msg)
 
   if (data.code !== 0 || !data.data) {
     throw new Error(`[Tajiduo] 获取绑定角色失败: ${data.msg}`)

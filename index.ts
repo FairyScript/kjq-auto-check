@@ -1,9 +1,12 @@
 // index.ts
 import { existsSync } from 'fs'
 import { resolve } from 'path'
+import { setDebug } from './src/debug.ts'
 
 const CONFIG_PATH = resolve(import.meta.dirname, 'config.json')
 const args = process.argv.slice(2)
+
+if (args.includes('--debug')) setDebug(true)
 
 if (args.includes('--setup') || !existsSync(CONFIG_PATH)) {
   // Setup mode

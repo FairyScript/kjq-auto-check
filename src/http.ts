@@ -1,4 +1,5 @@
 import { createHash } from 'crypto'
+import { debugLog } from './debug.ts'
 
 export function buildHeaders(
   base: Record<string, string>,
@@ -16,12 +17,15 @@ export async function httpGet<T>(
     ? `${url}?${new URLSearchParams(query)}`
     : url
   const res = await fetch(target, { method: 'GET', headers })
+  debugLog(`GET ${target} -> ${res.status}`)
   if (!res.ok) {
     const err = new Error(`HTTP ${res.status}`) as Error & { status?: number }
     err.status = res.status
     throw err
   }
-  return await res.json() as T
+  const data = await res.json() as T
+  debugLog('Response:', JSON.stringify(data).slice(0, 500))
+  return data
 }
 
 export async function httpPost<T>(
@@ -29,17 +33,21 @@ export async function httpPost<T>(
   body: Record<string, string>,
   headers?: Record<string, string>,
 ): Promise<T> {
+  debugLog(`POST ${url}`, body)
   const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded', ...headers },
     body: new URLSearchParams(body),
   })
+  debugLog(`POST ${url} -> ${res.status}`)
   if (!res.ok) {
     const err = new Error(`HTTP ${res.status}`) as Error & { status?: number }
     err.status = res.status
     throw err
   }
-  return await res.json() as T
+  const data = await res.json() as T
+  debugLog('Response:', JSON.stringify(data).slice(0, 500))
+  return data
 }
 
 export async function requestWithRetry<T>(
