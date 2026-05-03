@@ -1,7 +1,0 @@
-accept: application/json, text/plain, */*
-platform: android
-appversion: 1.2.2
-Host: bbs-api.tajiduo.com
-Connection: Keep-Alive
-Accept-Encoding: gzip
-User-Agent: okhttp/4.12.0
