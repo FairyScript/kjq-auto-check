@@ -7,7 +7,7 @@ import { debugLog } from '../../debug.ts'
 import { sendSmsCode, loginBySMS } from './laohu.ts'
 
 const USER_CENTER_LOGIN_URL = 'https://bbs-api.tajiduo.com/usercenter/api/login'
-const REFRESH_SESSION_URL = 'https://bbs-api.tajiduo.com/usercenter/api/refreshToken'
+const REFRESH_SESSION_URL = 'https://bbs-api.tajiduo.com/ /api/refreshToken'
 const GET_BIND_ROLE_URL = 'https://bbs-api.tajiduo.com/apihub/api/getGameBindRole'
 
 const TAJIDUO_BASE_HEADERS: Record<string, string> = {
@@ -42,7 +42,7 @@ function buildApiHeaders(deviceId: string, extra?: Record<string, string>): Reco
     ...TAJIDUO_BASE_HEADERS,
     deviceid: deviceId,
     uid: '0',
-    ds: generateDs(TAJIDUO_BASE_HEADERS['appversion'], TAJIDUO_DS_SALT),
+    ds: generateDs(TAJIDUO_BASE_HEADERS['appversion']!, TAJIDUO_DS_SALT),
     ...extra,
   }
 }
@@ -150,13 +150,13 @@ export async function setupTajiduo(): Promise<TajiduoConfig> {
     try {
       const refreshed = await refreshSession(existingCfg.refreshToken, deviceId)
       console.log(`Token 刷新成功，uid=${existingCfg.uid}`)
-      await saveConfigPartial({ tajiduo: { enabled: true, deviceId, uid: existingCfg.uid, refreshToken: refreshed.refreshToken, gameId } })
+      await saveConfigPartial({ tajiduo: { enabled: true, deviceId, uid: existingCfg.uid, refreshToken: refreshed.refreshToken, gameId, accessToken: refreshed.accessToken, accessTokenExpiresAt: Date.now() + 12 * 60 * 60 * 1000 } })
 
       const role = await getBindRole(refreshed.accessToken, existingCfg.uid, gameId, deviceId)
       console.log(`绑定角色: ${role.roleName} (ID: ${role.roleId})`)
 
       rl.close()
-      return { enabled: true, deviceId, uid: existingCfg.uid, refreshToken: refreshed.refreshToken, gameId }
+      return { enabled: true, deviceId, uid: existingCfg.uid, refreshToken: refreshed.refreshToken, gameId, accessToken: refreshed.accessToken, accessTokenExpiresAt: Date.now() + 12 * 60 * 60 * 1000 }
     } catch {
       console.log('已有 token 已失效，需要重新登录')
     }
@@ -184,23 +184,23 @@ export async function setupTajiduo(): Promise<TajiduoConfig> {
   console.log(`塔吉多登录成功: uid=${session.uid}`)
 
   // Save immediately after successful user center login
-  await saveConfigPartial({ tajiduo: { enabled: true, deviceId, uid: session.uid, refreshToken: session.refreshToken, gameId } })
+  await saveConfigPartial({ tajiduo: { enabled: true, deviceId, uid: session.uid, refreshToken: session.refreshToken, gameId, accessToken: session.accessToken, accessTokenExpiresAt: Date.now() + 12 * 60 * 60 * 1000 } })
   console.log('(登录状态已保存)')
 
   // Refresh to get a stable token pair
   console.log('正在获取稳定的 refreshToken...')
   const refreshed = await refreshSession(session.refreshToken, deviceId)
 
-  // Save again with stable refreshToken
-  await saveConfigPartial({ tajiduo: { enabled: true, deviceId, uid: session.uid, refreshToken: refreshed.refreshToken, gameId } })
+  // Save again with stable refreshToken and accessToken
+  await saveConfigPartial({ tajiduo: { enabled: true, deviceId, uid: session.uid, refreshToken: refreshed.refreshToken, gameId, accessToken: refreshed.accessToken, accessTokenExpiresAt: Date.now() + 12 * 60 * 60 * 1000 } })
   console.log('(稳定 token 已保存)')
 
   // Get bind role for display
   console.log('正在获取绑定角色...')
-  const role = await getBindRole(session.accessToken, session.uid, gameId, deviceId)
+  const role = await getBindRole(refreshed.accessToken, session.uid, gameId, deviceId)
   console.log(`绑定角色: ${role.roleName} (ID: ${role.roleId})`)
 
   rl.close()
 
-  return { enabled: true, deviceId, uid: session.uid, refreshToken: refreshed.refreshToken, gameId }
+  return { enabled: true, deviceId, uid: session.uid, refreshToken: refreshed.refreshToken, gameId, accessToken: refreshed.accessToken, accessTokenExpiresAt: Date.now() + 12 * 60 * 60 * 1000 }
 }

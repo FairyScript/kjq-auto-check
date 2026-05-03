@@ -18,6 +18,8 @@ export interface TajiduoConfig {
   uid: string
   refreshToken: string
   gameId: string
+  accessToken?: string
+  accessTokenExpiresAt?: number
 }
 
 export interface Config {

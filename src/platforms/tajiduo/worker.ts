@@ -1,10 +1,12 @@
 import type { TajiduoConfig } from '../../config.ts'
+import { loadConfigSafe, saveConfigPartial } from '../../config.ts'
 import { buildHeaders, httpGet, generateDs, randomDelay } from '../../http.ts'
-import { TajiduoTokenManager } from './token-manager.ts'
 
 const TAJIDUO_DS_SALT = 'pUds3dfMkl'
 const TAJIDUO_APP_VERSION = '1.2.2'
+const ACCESS_TOKEN_TTL_MS = 12 * 60 * 60 * 1000 // 12 hours
 
+const REFRESH_SESSION_URL = 'https://bbs-api.tajiduo.com/usercenter/api/refreshToken'
 const INIT_SIGN_IN_URL = 'https://bbs-api.tajiduo.com/apihub/awapi/sign/rewards'
 const SIGN_IN_URL = 'https://bbs-api.tajiduo.com/apihub/awapi/sign'
 const CHECK_SIGN_IN_URL = 'https://bbs-api.tajiduo.com/apihub/awapi/signin/state'
@@ -42,6 +44,12 @@ interface GameBindRoleResponse {
   }
 }
 
+interface RefreshResponse {
+  code: number
+  msg: string
+  data?: { accessToken?: string; refreshToken?: string }
+}
+
 function buildAuthHeaders(config: TajiduoConfig, token: string): Record<string, string> {
   return buildHeaders(DEFAULT_HEADERS, {
     'Authorization': token,
@@ -51,25 +59,68 @@ function buildAuthHeaders(config: TajiduoConfig, token: string): Record<string, 
   })
 }
 
-export async function runTajiduo(config: TajiduoConfig): Promise<void> {
-  const tokenManager = new TajiduoTokenManager()
+function isTokenValid(config: TajiduoConfig): boolean {
+  if (!config.accessToken || !config.accessTokenExpiresAt) return false
+  return Date.now() < config.accessTokenExpiresAt
+}
 
-  // Get or refresh tokens
-  let tokens = await tokenManager.getTokens()
-  if (!tokens) {
-    tokens = await tokenManager.refreshTokens(config.refreshToken, DEFAULT_HEADERS)
-    await tokenManager.saveTokens(tokens.accessToken, tokens.refreshToken)
+async function refreshAccessToken(config: TajiduoConfig): Promise<{ accessToken: string; refreshToken: string }> {
+  const headers = buildHeaders(DEFAULT_HEADERS, {
+    'deviceid': config.deviceId,
+    'uid': '0',
+    'ds': generateDs(DEFAULT_HEADERS['appversion'] ?? TAJIDUO_APP_VERSION, TAJIDUO_DS_SALT),
+    'Authorization': config.refreshToken,
+  })
+  const res = await fetch(REFRESH_SESSION_URL, { method: 'POST', headers })
+  if (!res.ok) {
+    throw new Error(`[Tajiduo] 刷新 token HTTP ${res.status}`)
+  }
+  const data = await res.json() as RefreshResponse
+  if (data.code !== 0 || !data.data?.accessToken || !data.data?.refreshToken) {
+    throw new Error(`[Tajiduo] 刷新 token 失败: ${data.msg}`)
+  }
+  return { accessToken: data.data.accessToken, refreshToken: data.data.refreshToken }
+}
+
+async function ensureAccessToken(config: TajiduoConfig): Promise<string> {
+  if (isTokenValid(config)) {
+    return config.accessToken!
   }
 
+  console.log('[Tajiduo] accessToken 已过期或不存在，正在刷新...')
+  const { accessToken, refreshToken } = await refreshAccessToken(config)
+
+  // Save refreshed tokens to config
+  await saveConfigPartial({
+    tajiduo: {
+      ...config,
+      accessToken,
+      accessTokenExpiresAt: Date.now() + ACCESS_TOKEN_TTL_MS,
+      refreshToken,
+    },
+  })
+
+  // Update in-memory config
+  config.accessToken = accessToken
+  config.accessTokenExpiresAt = Date.now() + ACCESS_TOKEN_TTL_MS
+  config.refreshToken = refreshToken
+
+  return accessToken
+}
+
+export async function runTajiduo(config: TajiduoConfig): Promise<void> {
   async function withRetry<T>(fn: (token: string) => Promise<T>): Promise<T> {
+    let token = await ensureAccessToken(config)
     try {
-      return await fn(tokens!.accessToken)
+      return await fn(token)
     } catch (err) {
       if ((err as { status?: number }).status === 401) {
-        tokens = await tokenManager.refreshTokens(tokens!.refreshToken, DEFAULT_HEADERS)
-        await tokenManager.saveTokens(tokens.accessToken, tokens.refreshToken)
+        // Force refresh
+        config.accessToken = undefined
+        config.accessTokenExpiresAt = undefined
+        token = await ensureAccessToken(config)
         try {
-          return await fn(tokens.accessToken)
+          return await fn(token)
         } catch (retryErr) {
           if ((retryErr as { status?: number }).status === 401) {
             throw new Error('[Tajiduo] refreshToken 已失效，请重新运行 --setup 登录')
